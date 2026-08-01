@@ -1,7 +1,0 @@
-{
-  "usuarios": [
-    { "email": "ixmawel@gmail.com", "role": "teacher"}
-    ,{ "email": "jerfessonlima26@gmail.com", "role": "teacher"}
-    ,{ "email": "camilamarinhom@gmail.com", "role": "student" }
-  ]
-}
