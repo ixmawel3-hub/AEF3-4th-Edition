@@ -6,7 +6,7 @@ import path from 'path'
 // Keep existing base logic; configure assetFileNames to preserve original
 // filenames for media/pdf assets (remove the generated hash suffix).
 export default defineConfig({
-  base: (process.env.GH_PAGES) ? '/AEF4E3/' : '/',
+  base: '/AEF3-4th-Edition',
   plugins: [react()],
   build: {
     rollupOptions: {
