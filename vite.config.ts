@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 // Keep existing base logic; configure assetFileNames to preserve original
 // filenames for media/pdf assets (remove the generated hash suffix).
 export default defineConfig({
-  base: '/AEF3-4th-Edition',
+  base: '/AEF3-4th-Edition/',
   plugins: [react()]
   // build: {
   //   rollupOptions: {
