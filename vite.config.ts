@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react'
 // Set `base` to your repository name when deploying to GitHub Pages.
 // Replace `EnglishBooks` below if your repository has a different name.
 export default defineConfig({
-  base: (process.env.GH_PAGES) ? '/AEF3-4th-Edition/' : '/',
+  base: ('/AEF3-4th-Edition/'),
   plugins: [react()],
 })
