@@ -50,7 +50,7 @@ export default function Login({ onLogin }: Props) {
         {status === 'not-found' && <Alert severity="error">O usuário não está cadastrado.</Alert>}
         <Button
           component="a"
-          href="https://english-books.vercel.app"
+          href="https://ixmawel3-hub.github.io/EnglishBooks/"
           rel="noopener noreferrer"
           variant="contained"
           size="large"

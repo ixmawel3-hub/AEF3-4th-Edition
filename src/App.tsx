@@ -7,21 +7,14 @@ import PdfViewer from './components/PdfViewer'
 import type { Book } from './models/book'
 import { findUserByEmail } from './services/userService'
 import { getBooks } from './services/bookService'
-
 const loggedInUserStorageKey = 'english-bookshelf.logged-in-user'
-
-const getSavedBookPermissions = (): string[] | null => {
-  const savedEmail = localStorage.getItem(loggedInUserStorageKey)
-  const user = savedEmail ? findUserByEmail(savedEmail) : undefined
-  return user ? ['*'] : null
-}
 
 export default function App() {
   const [selected, setSelected] = useState<Book | null>(null)
-  const [allowedBookFilenames, setAllowedBookFilenames] = useState<string[] | null>(getSavedBookPermissions)
+  const [allowedBookFilenames, setAllowedBookFilenames] = useState<string[] | null>(null)
 
   const handleLogin = async (email: string) => {
-    const user = findUserByEmail(email)
+    const user = await findUserByEmail(email)
     if (!user) return 'not-found' as const
 
     localStorage.setItem(loggedInUserStorageKey, user.email)
@@ -57,18 +50,24 @@ export default function App() {
   useEffect(() => {
     const savedEmail = localStorage.getItem(loggedInUserStorageKey)
     if (!savedEmail) return
-    const user = findUserByEmail(savedEmail)
-    if (!user) return
-    if (user.role === 'teacher') return // already has full access
-    // if state is already a computed list, skip
-    if (Array.isArray(allowedBookFilenames) && !allowedBookFilenames.includes('*')) return
 
     let mounted = true
-    getBooks().then((books) => {
-      if (!mounted) return
-      const permitted = books.filter((b) => !b.title.toLowerCase().includes('teacher'))
-      setAllowedBookFilenames(permitted.map((b) => b.id))
-    }).catch((err) => console.error('[app] getBooks error', err))
+    ;(async () => {
+      try {
+        const user = await findUserByEmail(savedEmail)
+        if (!mounted || !user) return
+        if (user.role === 'teacher') {
+          setAllowedBookFilenames(['*'])
+          return
+        }
+        const books = await getBooks()
+        if (!mounted) return
+        const permitted = books.filter((b) => !b.title.toLowerCase().includes('teacher'))
+        setAllowedBookFilenames(permitted.map((b) => b.id))
+      } catch (err) {
+        console.error('[app] getBooks error', err)
+      }
+    })()
     return () => { mounted = false }
   }, [])
 

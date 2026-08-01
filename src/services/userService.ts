@@ -1,18 +1,29 @@
-import usuariosData from '../data/usuarios.json'
-
 type RegisteredUser = {
   email: string
   role?: 'teacher' | 'student'
   livros?: string[]
 }
 
+const REMOTE_USERS_URL = 'https://ixmawel3-hub.github.io/EnglishBooks/assets/data/aef34e.json'
+
+const loadRemoteUsers = async (): Promise<any[]> => {
+  // Always fetch remote resource and add a cache-busting param to avoid CDN/browser cache.
+  const url = `${REMOTE_USERS_URL}?_=${Date.now()}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('remote fetch failed')
+  const data = await res.json()
+  return data && data.usuarios ? data.usuarios : (Array.isArray(data) ? data : [])
+}
+
 // Returns a RegisteredUser if found. Supports two legacy formats:
 // - array of strings (emails) -> treated as students (no explicit role)
 // - array of objects { email, role?, livros? }
-export const findUserByEmail = (email: string): RegisteredUser | undefined => {
-  const normalizedEmail = email.trim().toLowerCase()
-  const users: any = usuariosData.usuarios
-  if (!users) return undefined
+export const findUserByEmail = async (email: string): Promise<RegisteredUser | undefined> => {
+  const normalizedEmail = (email || '').trim().toLowerCase()
+  if (!normalizedEmail) return undefined
+
+  const users: any[] = await loadRemoteUsers()
+  if (!users || users.length === 0) return undefined
 
   // array of objects
   if (users.length && typeof users[0] === 'object') {
