@@ -9,6 +9,8 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import AudioPanel from './AudioPanel'
 import Controls from './Controls'
 import VideoPanel from './VideoPanel'
+import type { BookUnit } from '../models/book'
+import unitPages from '../data/unitPages.json'
 
 // Resolve worker relative to the app base so it works on GitHub Pages
 pdfjs.GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.mjs'
@@ -30,6 +32,7 @@ export default function PdfViewer({ src, title, onClose, onLogoff }: Props) {
   const [pagesPerView, setPagesPerView] = useState<1 | 2>(1)
   const [audioOpen, setAudioOpen] = useState(false)
   const [videoOpen, setVideoOpen] = useState(false)
+  const units = (unitPages as Record<string, BookUnit[]>)[title ?? ''] ?? []
   const [error, setError] = useState<string | null>(null)
   const [pageWidth, setPageWidth] = useState(0)
   const [pageRatio, setPageRatio] = useState(0.75)
@@ -120,6 +123,8 @@ export default function PdfViewer({ src, title, onClose, onLogoff }: Props) {
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
         onSetPage={setPageSafe}
+        units={units}
+        onSelectUnit={setPageSafe}
         onPagesPerViewChange={setPagesPerView}
         onToggleAudio={() => {
           setAudioOpen((isOpen) => !isOpen)

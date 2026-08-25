@@ -3,3 +3,8 @@ export type Book = {
   title: string
   url: string
 }
+
+export type BookUnit = {
+  name: string
+  page: number
+}

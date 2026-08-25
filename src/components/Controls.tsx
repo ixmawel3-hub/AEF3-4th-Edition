@@ -6,6 +6,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import RemoveIcon from '@mui/icons-material/Remove'
 import AddIcon from '@mui/icons-material/Add'
 import VideocamIcon from '@mui/icons-material/Videocam'
+import type { BookUnit } from '../models/book'
 type Props = {
   page: number
   numPages: number | null
@@ -16,6 +17,8 @@ type Props = {
   onZoomIn: () => void
   onZoomOut: () => void
   onSetPage: (n: number) => void
+  units: BookUnit[]
+  onSelectUnit: (page: number) => void
   onPagesPerViewChange: (pages: 1 | 2) => void
   onToggleAudio: () => void
   audioOpen: boolean
@@ -35,6 +38,8 @@ export default function Controls({
   onZoomIn,
   onZoomOut,
   onSetPage,
+  units,
+  onSelectUnit,
   onPagesPerViewChange,
   onToggleAudio,
   audioOpen,
@@ -43,6 +48,10 @@ export default function Controls({
   compact,
   onToggleFull
 }: Props) {
+  const currentUnit = units.reduce<BookUnit | null>((activeUnit, unit) => (
+    unit.page <= page ? unit : activeUnit
+  ), null)
+
   return (
     <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, gap: { xs: 0.5, sm: 0.5 }, p: 1, overflowX: { xs: 'hidden', sm: 'auto' }, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', top: 49, zIndex: 10, scrollbarWidth: 'thin' }}>
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', sm: 'flex-start' }, gap: { xs: 0, sm: 0.5 }, width: { xs: '100%', sm: 'auto' }, minWidth: 0, flexShrink: 0 }}>
@@ -70,6 +79,17 @@ export default function Controls({
             {!compact && <MenuItem value={2}>2 pages</MenuItem>}
           </Select>
         </FormControl>
+        {units.length > 0 && <FormControl size="small" sx={{ minWidth: { xs: 'clamp(150px, 48vw, 220px)', sm: 220 }, flexShrink: 0 }}>
+          <Select
+            displayEmpty
+            value={currentUnit?.page ?? ''}
+            onChange={(event) => onSelectUnit(Number(event.target.value))}
+            aria-label="Select unit"
+            MenuProps={{ disablePortal: true }}
+          >
+            {units.map((unit) => <MenuItem key={unit.name} value={unit.page}>{unit.name}</MenuItem>)}
+          </Select>
+        </FormControl>}
       </Stack>
       <datalist id="pdf-pages">
           {Array.from({ length: numPages ?? 0 }, (_, index) => index).map((pageNumber) => (
