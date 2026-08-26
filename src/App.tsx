@@ -83,7 +83,7 @@ export default function App() {
       ) : (
         <Container component="main" maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
           <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h4" component="h1">American English File 2 - 4th Edition</Typography>
+            <Typography variant="h4" component="h1">American English File 3 - 4th Edition</Typography>
             <Stack direction="row" spacing={0.5}>
               <Tooltip title="Homepage"><IconButton component="a" href="https://ixmawel3-hub.github.io/EnglishBooks/" aria-label="Homepage"><HomeIcon /></IconButton></Tooltip>
               <Tooltip title="Logoff"><IconButton onClick={handleLogoff} aria-label="Logoff"><LogoutIcon /></IconButton></Tooltip>
