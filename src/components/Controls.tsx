@@ -1,111 +1,264 @@
-import { FormControl, IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material'
-import AudiotrackIcon from '@mui/icons-material/Audiotrack'
-import FullscreenIcon from '@mui/icons-material/Fullscreen'
-import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
-import NavigateNextIcon from '@mui/icons-material/NavigateNext'
-import RemoveIcon from '@mui/icons-material/Remove'
-import AddIcon from '@mui/icons-material/Add'
-import VideocamIcon from '@mui/icons-material/Videocam'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, AppBar, Box, Button, CircularProgress, IconButton, Stack, Toolbar, Tooltip, Typography, useMediaQuery } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import HomeIcon from '@mui/icons-material/Home'
+import LogoutIcon from '@mui/icons-material/Logout'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+import AudioPanel from './AudioPanel'
+import Controls from './Controls'
+import VideoPanel from './VideoPanel'
+import NotesPanel from './NotesPanel'
+import type { Note } from './NotesPanel'
+import { defaultNoteColor } from './NotesPanel'
 import type { BookUnit } from '../models/book'
+import unitPages from '../data/unitPages.json'
+
+// Resolve worker relative to the app base so it works on GitHub Pages
+pdfjs.GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.mjs'
+
 type Props = {
-  page: number
-  numPages: number | null
-  scale: number
-  pagesPerView: 1 | 2
-  onNext: () => void
-  onPrev: () => void
-  onZoomIn: () => void
-  onZoomOut: () => void
-  onSetPage: (n: number) => void
-  units: BookUnit[]
-  onSelectUnit: (page: number) => void
-  onPagesPerViewChange: (pages: 1 | 2) => void
-  onToggleAudio: () => void
-  audioOpen: boolean
-  onToggleVideo: () => void
-  videoOpen: boolean
-  compact: boolean
-  onToggleFull: () => void
+  src: string
+  title?: string
+  onClose?: () => void
+  onLogoff?: () => void
 }
 
-export default function Controls({
-  page,
-  numPages,
-  scale,
-  pagesPerView,
-  onNext,
-  onPrev,
-  onZoomIn,
-  onZoomOut,
-  onSetPage,
-  units,
-  onSelectUnit,
-  onPagesPerViewChange,
-  onToggleAudio,
-  audioOpen,
-  onToggleVideo,
-  videoOpen,
-  compact,
-  onToggleFull
-}: Props) {
-  const currentUnit = units.reduce<BookUnit | null>((activeUnit, unit) => (
-    unit.page <= page ? unit : activeUnit
-  ), null)
+export default function PdfViewer({ src, title, onClose, onLogoff }: Props) {
+  const theme = useTheme()
+  const compact = useMediaQuery(theme.breakpoints.down('sm'))
+  const file = useMemo(() => ({ url: src }), [src])
+  const [numPages, setNumPages] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [canGoBack, setCanGoBack] = useState(false)
+  const [canGoForward, setCanGoForward] = useState(false)
+  const [scale, setScale] = useState(1)
+  const [pagesPerView, setPagesPerView] = useState<1 | 2>(1)
+  const [audioOpen, setAudioOpen] = useState(false)
+  const [videoOpen, setVideoOpen] = useState(false)
+  const [notesByPage, setNotesByPage] = useState<Record<number, Note[]>>({})
+  const units = (unitPages as Record<string, BookUnit[]>)[title ?? ''] ?? []
+  const [error, setError] = useState<string | null>(null)
+  const [pageWidth, setPageWidth] = useState(0)
+  const [pageRatio, setPageRatio] = useState(0.75)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const docAreaRef = useRef<HTMLDivElement | null>(null)
+  const currentPageRef = useRef(1)
+  const pageHistoryRef = useRef<number[]>([])
+  const forwardPageHistoryRef = useRef<number[]>([])
+
+  useEffect(() => {
+    const measure = () => {
+      const availableWidth = Math.max(0, (docAreaRef.current?.clientWidth ?? window.innerWidth) - (compact ? 16 : 32))
+      const availableHeight = window.innerHeight - (compact ? 128 : 150)
+      const widthPerPage = (availableWidth - (pagesPerView - 1) * 16) / pagesPerView
+      const fitWidth = Math.min(widthPerPage, availableHeight * pageRatio)
+      setPageWidth(Math.max(0, fitWidth))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (docAreaRef.current) ro.observe(docAreaRef.current)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [compact, pageRatio, pagesPerView])
+
+  useEffect(() => {
+    if (compact) setPagesPerView(1)
+  }, [compact])
+
+  const onDocumentLoadSuccess = useCallback((doc: { numPages: number }) => {
+    setNumPages(doc.numPages)
+    currentPageRef.current = 1
+    pageHistoryRef.current = []
+    forwardPageHistoryRef.current = []
+    setCanGoBack(false)
+    setCanGoForward(false)
+    setPage(1)
+    setError(null)
+  }, [])
+
+  const onDocumentLoadError = useCallback((err: any) => {
+    console.error('Document load error', err)
+    setError(String(err?.message ?? err))
+  }, [])
+  const onDocumentSourceError = useCallback((err: any) => {
+    console.error('Document source error', err)
+    setError(String(err?.message ?? err))
+  }, [])
+
+  useEffect(() => {
+    currentPageRef.current = 1
+    pageHistoryRef.current = []
+    forwardPageHistoryRef.current = []
+    setPage(1)
+    setScale(1)
+    setNumPages(null)
+    setNotesByPage({})
+  }, [src])
+
+  const changePage = (nextPage: number) => {
+    if (nextPage === currentPageRef.current) return
+
+    pageHistoryRef.current.push(currentPageRef.current)
+    forwardPageHistoryRef.current = []
+    currentPageRef.current = nextPage
+    setPage(nextPage)
+    setCanGoBack(true)
+    setCanGoForward(false)
+  }
+
+  const goBack = () => {
+    const previousPage = pageHistoryRef.current.pop()
+    if (previousPage === undefined) return
+
+    const currentPage = currentPageRef.current
+    forwardPageHistoryRef.current.push(currentPage)
+    currentPageRef.current = previousPage
+    setPage(previousPage)
+    setCanGoBack(pageHistoryRef.current.length > 0)
+    setCanGoForward(true)
+  }
+
+  const goForward = () => {
+    const nextPage = forwardPageHistoryRef.current.pop()
+    if (nextPage === undefined) return
+
+    const currentPage = currentPageRef.current
+    pageHistoryRef.current.push(currentPage)
+    currentPageRef.current = nextPage
+    setPage(nextPage)
+    setCanGoBack(true)
+    setCanGoForward(forwardPageHistoryRef.current.length > 0)
+  }
+
+  const next = () => changePage(numPages ? Math.min(numPages, currentPageRef.current + pagesPerView) : currentPageRef.current + pagesPerView)
+  const prev = () => changePage(Math.max(1, currentPageRef.current - pagesPerView))
+  const zoomIn = () => setScale((s) => Math.min(3, s + 0.25))
+  const zoomOut = () => setScale((s) => Math.max(0.5, s - 0.25))
+  const setPageSafe = (n: number) => {
+    if (!numPages) return changePage(1)
+    const v = Math.max(1, Math.min(numPages, Math.floor(n)))
+    changePage(v)
+  }
+
+  const onPageLoadSuccess = (loadedPage: any) => {
+    const viewport = loadedPage.getViewport({ scale: 1 })
+    setPageRatio(viewport.width / viewport.height)
+  }
+
+  const toggleFull = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {})
+    else document.exitFullscreen().catch(() => {})
+  }
 
   return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, gap: { xs: 0.5, sm: 0.5 }, p: 1, overflowX: { xs: 'hidden', sm: 'auto' }, borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper', position: 'sticky', top: 49, zIndex: 10, scrollbarWidth: 'thin' }}>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', sm: 'flex-start' }, gap: { xs: 0, sm: 0.5 }, width: { xs: '100%', sm: 'auto' }, minWidth: 0, flexShrink: 0 }}>
-        <Tooltip title="Previous page"><span><IconButton onClick={onPrev} disabled={page <= 1} aria-label="Previous"><NavigateBeforeIcon /></IconButton></span></Tooltip>
-        <Tooltip title="Next page"><span><IconButton onClick={onNext} disabled={numPages !== null && page >= numPages} aria-label="Next"><NavigateNextIcon /></IconButton></span></Tooltip>
-        <TextField size="small" label="Page" value={page - 1} slotProps={{ htmlInput: { inputMode: 'numeric', list: 'pdf-pages', 'aria-label': 'Select or type page, starting at zero' } }} onChange={(event) => {
-          const value = event.target.value.trim()
-            if (value === '') {
-              onSetPage(1)
-              return
-            }
+    <Box className="pdf-viewer" ref={containerRef} sx={{ minHeight: '100%', bgcolor: 'background.default', '&:fullscreen': { height: '100%', overflowY: 'auto' } }}>
+      <AppBar position="sticky" color="inherit" elevation={0} sx={{ top: 0, borderBottom: 1, borderColor: 'divider' }}>
+        <Toolbar variant="dense" sx={{ minHeight: { xs: 48, sm: 56 }, px: { xs: 1, sm: 2 }, justifyContent: 'space-between', gap: 1 }}>
+          <Typography variant="h6" noWrap sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</Typography>
+          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+            <Button startIcon={<ArrowBackIcon />} onClick={() => onClose?.()} color="inherit" size="small"><Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Back to Bookshelf</Box></Button>
+            <Tooltip title="Homepage"><IconButton component="a" href="https://ixmawel3-hub.github.io/EnglishBooks/" aria-label="Homepage" color="inherit" size="small"><HomeIcon fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title="Logoff"><IconButton onClick={() => onLogoff?.()} aria-label="Logoff" color="inherit" size="small"><LogoutIcon fontSize="small" /></IconButton></Tooltip>
+          </Stack>
+        </Toolbar>
+      </AppBar>
+      <Controls
+        page={page}
+        numPages={numPages}
+        scale={scale}
+        pagesPerView={pagesPerView}
+        onNext={next}
+        onPrev={prev}
+        onBack={goBack}
+        canGoBack={canGoBack}
+        onForward={goForward}
+        canGoForward={canGoForward}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onSetPage={setPageSafe}
+        units={units}
+        onSelectUnit={setPageSafe}
+        onPagesPerViewChange={setPagesPerView}
+        onToggleAudio={() => {
+          setAudioOpen((isOpen) => !isOpen)
+          setVideoOpen(false)
+        }}
+        audioOpen={audioOpen}
+        onToggleVideo={() => {
+          setVideoOpen((isOpen) => !isOpen)
+          setAudioOpen(false)
+        }}
+        videoOpen={videoOpen}
+        onToggleNotes={() => {
+          const pageNotes = notesByPage[page] ?? []
+          setNotesByPage((notes) => ({
+            ...notes,
+            [page]: [...pageNotes, {
+              id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+              text: '',
+              color: defaultNoteColor,
+              minimized: false,
+              position: { x: 24 + pageNotes.length * 20, y: 120 + pageNotes.length * 28 }
+            }]
+          }))
+        }}
+        notesOpen={(notesByPage[page]?.length ?? 0) > 0}
+        compact={compact}
+        onToggleFull={toggleFull}
+      />
 
-            const selectedPage = Number(value)
-            if (Number.isInteger(selectedPage)) onSetPage(selectedPage + 1)
-        }} disabled={numPages === null} sx={{ width: { xs: 'clamp(88px, 27vw, 108px)', sm: 105 }, flex: '0 0 auto' }} />
-        <Typography variant="body2" sx={{ mr: { xs: 0, sm: 1 }, flexShrink: 0, whiteSpace: 'nowrap' }}>of {numPages !== null ? numPages - 1 : '--'}</Typography>
-          <FormControl size="small" sx={{ minWidth: { xs: 'clamp(88px, 28vw, 105px)', sm: 120 }, flexShrink: 0 }}>
-          <Select
-            value={pagesPerView}
-            onChange={(event) => onPagesPerViewChange(Number(event.target.value) as 1 | 2)}
-            aria-label="Pages per view"
-            MenuProps={{ disablePortal: true }}
-          >
-            <MenuItem value={1}>1 page</MenuItem>
-            {!compact && <MenuItem value={2}>2 pages</MenuItem>}
-          </Select>
-        </FormControl>
-        {units.length > 0 && <FormControl size="small" sx={{ minWidth: { xs: 'clamp(150px, 48vw, 220px)', sm: 220 }, flexShrink: 0 }}>
-          <Select
-            displayEmpty
-            value={currentUnit?.page ?? ''}
-            onChange={(event) => onSelectUnit(Number(event.target.value))}
-            aria-label="Select unit"
-            MenuProps={{ disablePortal: true }}
-          >
-            {units.map((unit) => <MenuItem key={unit.name} value={unit.page}>{unit.name}</MenuItem>)}
-          </Select>
-        </FormControl>}
-      </Stack>
-      <datalist id="pdf-pages">
-          {Array.from({ length: numPages ?? 0 }, (_, index) => index).map((pageNumber) => (
-            <option key={pageNumber} value={pageNumber}>
-              {pageNumber}
-            </option>
-          ))}
-      </datalist>
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', sm: 'flex-start' }, gap: { xs: 0, sm: 0.5 }, width: { xs: '100%', sm: 'auto' }, flexShrink: 0 }}>
-        <Tooltip title="Zoom out"><IconButton onClick={onZoomOut}><RemoveIcon /></IconButton></Tooltip>
-        <Typography variant="body2" sx={{ minWidth: 42, whiteSpace: 'nowrap' }}>{Math.round(scale * 100)}%</Typography>
-        <Tooltip title="Zoom in"><IconButton onClick={onZoomIn}><AddIcon /></IconButton></Tooltip>
-        <Tooltip title="Audio library"><IconButton color={audioOpen ? 'primary' : 'default'} onClick={onToggleAudio}><AudiotrackIcon /></IconButton></Tooltip>
-        <Tooltip title="Video library"><IconButton color={videoOpen ? 'primary' : 'default'} onClick={onToggleVideo}><VideocamIcon /></IconButton></Tooltip>
-        <Tooltip title="Fullscreen"><IconButton onClick={onToggleFull}><FullscreenIcon /></IconButton></Tooltip>
-      </Stack>
-    </Stack>
+      <Box className="viewer-content">
+        <Box className="document-area" ref={docAreaRef} sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', p: { xs: 1, sm: 2 }, overflowX: 'auto', bgcolor: 'grey.100' }}>
+          {error ? (
+            <Alert severity="error">Erro ao carregar PDF: {error}</Alert>
+          ) : (
+              <Document
+                file={file}
+                onLoadSuccess={onDocumentLoadSuccess}
+                onLoadError={onDocumentLoadError}
+                onSourceError={onDocumentSourceError}
+                loading={<CircularProgress />}>
+                <Box className={pagesPerView === 2 ? 'page-spread' : undefined} sx={pagesPerView === 2 ? { display: 'flex', alignItems: 'flex-start', gap: 2 } : undefined}>
+                  <Page
+                    pageNumber={page}
+                    width={pageWidth > 0 ? pageWidth * scale : undefined}
+                    onLoadSuccess={onPageLoadSuccess}
+                  />
+                  {pagesPerView === 2 && numPages !== null && page < numPages && (
+                    <Page
+                      pageNumber={page + 1}
+                      width={pageWidth > 0 ? pageWidth * scale : undefined}
+                    />
+                  )}
+                </Box>
+              </Document>
+          )}
+        </Box>
+        {audioOpen && <AudioPanel bookTitle={title ?? ''} onClose={() => setAudioOpen(false)} />}
+        {videoOpen && <VideoPanel bookTitle={title ?? ''} onClose={() => setVideoOpen(false)} />}
+        {(notesByPage[page] ?? []).map((note) => (
+          <NotesPanel
+            key={note.id}
+            page={page}
+            note={note}
+            minimizedIndex={(notesByPage[page] ?? []).filter((currentNote) => currentNote.minimized).findIndex((currentNote) => currentNote.id === note.id)}
+            onChange={(updatedNote) => setNotesByPage((notes) => ({
+              ...notes,
+              [page]: (notes[page] ?? []).map((currentNote) => currentNote.id === updatedNote.id ? updatedNote : currentNote)
+            }))}
+            onDelete={() => setNotesByPage((notes) => ({
+              ...notes,
+              [page]: (notes[page] ?? []).filter((currentNote) => currentNote.id !== note.id)
+            }))}
+          />
+        ))}
+      </Box>
+    </Box>
   )
 }
